@@ -1,0 +1,40 @@
+# Manual evaluation gate against real models. Needs cloud credentials configured via OIDC
+# (see docs/pre-req-doc.md section 7) - no long-lived keys.
+name: eval
+on:
+  workflow_dispatch:
+    inputs:
+      provider: {description: "bedrock | azure_openai", default: bedrock}
+      min_score: {description: "Fail below this mean score", default: "4.5"}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e .
+      - if: inputs.provider == 'bedrock'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_EVAL_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - if: inputs.provider == 'azure_openai'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: sre-eval --provider ${{ inputs.provider }} --min-score ${{ inputs.min_score }} --out eval/results/${{ inputs.provider }}.json
+        env:
+          SRE_AWS_REGION: ${{ vars.AWS_REGION }}
+          SRE_AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          SRE_AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: eval-${{ inputs.provider }}, path: eval/results}

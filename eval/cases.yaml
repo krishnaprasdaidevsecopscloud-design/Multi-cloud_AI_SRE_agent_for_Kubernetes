@@ -1,0 +1,103 @@
+# Evaluation scenarios. Each is a frozen fake cluster + a question + scoring expectations.
+# Rubric (0-5, 1 point each): resource, reason, evidence, required_tools, clean_execution.
+cases:
+  - id: oomkilled-checkout
+    question: "The checkout service keeps restarting in the shop namespace. What is wrong?"
+    cluster:
+      namespaces: [default, shop]
+      pods:
+        - {namespace: shop, name: checkout-7d9f-abcde, phase: Running, node: node-1,
+           conditions: [],
+           containers: [{name: app, ready: false, restarts: 14, state: waiting, reason: CrashLoopBackOff,
+                         last_termination: "OOMKilled (exit 137)", image: shop/checkout:1.8}]}
+        - {namespace: shop, name: cart-5c8d-xyz12, phase: Running, node: node-2, conditions: [],
+           containers: [{name: app, ready: true, restarts: 0, state: running, reason: "",
+                         last_termination: "", image: shop/cart:2.1}]}
+      events:
+        - {type: Warning, reason: BackOff, object: Pod/checkout-7d9f-abcde, namespace: shop,
+           message: "Back-off restarting failed container app", count: 52}
+      logs:
+        "shop/checkout-7d9f-abcde#previous": "INFO loading catalog\nINFO cache warm 1.9GB\nFATAL java.lang.OutOfMemoryError: Java heap space"
+    expect:
+      resource: [checkout]
+      reason_any: [OOMKilled, out of memory, memory limit]
+      evidence_any: ["137", OOMKilled, OutOfMemory]
+      required_tools: [list_pods]
+
+  - id: imagepull-payments
+    question: "Pods in the payments namespace will not start. Why?"
+    cluster:
+      namespaces: [payments]
+      pods:
+        - {namespace: payments, name: ledger-6b7c-qwe45, phase: Pending, node: node-1, conditions: [],
+           containers: [{name: ledger, ready: false, restarts: 0, state: waiting, reason: ImagePullBackOff,
+                         last_termination: "", image: registry.example.com/ledger:v9.9}]}
+      events:
+        - {type: Warning, reason: Failed, object: Pod/ledger-6b7c-qwe45, namespace: payments,
+           message: "Failed to pull image registry.example.com/ledger:v9.9: manifest unknown", count: 6}
+    expect:
+      resource: [ledger]
+      reason_any: [ImagePullBackOff, manifest unknown, image tag, pull image]
+      evidence_any: ["v9.9", "manifest unknown"]
+      required_tools: [list_pods, get_events]
+
+  - id: unschedulable-batch
+    question: "My batch-worker pod in the jobs namespace is stuck Pending."
+    cluster:
+      namespaces: [jobs]
+      pods:
+        - {namespace: jobs, name: batch-worker-0, phase: Pending, node: null,
+           conditions: [{type: PodScheduled, status: "False", reason: Unschedulable,
+                         message: "0/3 nodes are available: 3 Insufficient cpu."}],
+           containers: []}
+      events:
+        - {type: Warning, reason: FailedScheduling, object: Pod/batch-worker-0, namespace: jobs,
+           message: "0/3 nodes are available: 3 Insufficient cpu.", count: 11}
+      nodes:
+        - {name: node-1, ready: true, problem_conditions: [], allocatable: {cpu: "2", memory: 7Gi}}
+        - {name: node-2, ready: true, problem_conditions: [], allocatable: {cpu: "2", memory: 7Gi}}
+        - {name: node-3, ready: true, problem_conditions: [], allocatable: {cpu: "2", memory: 7Gi}}
+    expect:
+      resource: [batch-worker]
+      reason_any: [Insufficient cpu, FailedScheduling, unschedulable, not enough cpu]
+      evidence_any: ["0/3 nodes", "Insufficient cpu"]
+      required_tools: [list_pods]
+
+  - id: bad-config-api
+    question: "The api pod in prod crashes right after start. Find the cause."
+    cluster:
+      namespaces: [prod]
+      pods:
+        - {namespace: prod, name: api-84c6-lmn90, phase: Running, node: node-2, conditions: [],
+           containers: [{name: api, ready: false, restarts: 7, state: waiting, reason: CrashLoopBackOff,
+                         last_termination: "Error (exit 1)", image: prod/api:3.2}]}
+      events:
+        - {type: Warning, reason: BackOff, object: Pod/api-84c6-lmn90, namespace: prod,
+           message: "Back-off restarting failed container api", count: 30}
+      logs:
+        "prod/api-84c6-lmn90#previous": "INFO starting api 3.2\nERROR missing required env DATABASE_URL\npassword=hunter2 loaded\nexit 1"
+    expect:
+      resource: [api]
+      reason_any: [DATABASE_URL, missing env, environment variable, configuration]
+      evidence_any: [DATABASE_URL, "exit 1"]
+      required_tools: [list_pods, get_pod_logs]
+
+  - id: node-notready
+    question: "Several pods got evicted or went Pending across the cluster. What happened?"
+    cluster:
+      namespaces: [default]
+      pods:
+        - {namespace: default, name: web-1, phase: Failed, node: node-2, conditions: [],
+           containers: [{name: web, ready: false, restarts: 0, state: terminated, reason: Evicted,
+                         last_termination: "", image: nginx:1.27}]}
+      events:
+        - {type: Warning, reason: Evicted, object: Pod/web-1, namespace: default,
+           message: "The node had condition: [DiskPressure].", count: 1}
+      nodes:
+        - {name: node-1, ready: true, problem_conditions: [], allocatable: {cpu: "4"}}
+        - {name: node-2, ready: true, problem_conditions: [{type: DiskPressure, status: "True", reason: KubeletHasDiskPressure}], allocatable: {cpu: "4"}}
+    expect:
+      resource: [node-2]
+      reason_any: [DiskPressure, disk pressure]
+      evidence_any: [DiskPressure, Evicted]
+      required_tools: [list_nodes]

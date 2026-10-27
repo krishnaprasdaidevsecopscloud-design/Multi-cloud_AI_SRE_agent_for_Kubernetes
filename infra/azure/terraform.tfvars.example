@@ -1,0 +1,12 @@
+subscription_id         = "00000000-0000-0000-0000-000000000000"
+location                = "eastus2"
+resource_group_name     = "sre-agent-rg"
+aks_cluster_name        = "my-aks"
+aks_resource_group_name = "my-aks-rg"
+image_tag               = "0.1.0"
+
+# pick one or both targets
+enable_aks            = true
+enable_container_apps = false
+
+# allowed_namespaces = "shop,payments"

@@ -1,0 +1,14 @@
+region           = "us-east-1"
+eks_cluster_name = "my-eks"
+image_tag        = "0.1.0"
+
+# pick one or more targets
+enable_eks       = true
+enable_ecs       = false
+enable_agentcore = false
+
+# ECS only
+# vpc_id             = "vpc-0123456789abcdef0"
+# private_subnet_ids = ["subnet-aaa", "subnet-bbb"]
+
+# allowed_namespaces = "shop,payments"

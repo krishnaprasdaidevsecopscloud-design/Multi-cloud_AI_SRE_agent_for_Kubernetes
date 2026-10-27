@@ -1,0 +1,32 @@
+image:
+  repository: ""        # e.g. <acct>.dkr.ecr.us-east-1.amazonaws.com/sre-agent or <acr>.azurecr.io/sre-agent
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# bedrock | azure_openai
+provider: bedrock
+
+# Extra env vars (SRE_AWS_REGION, SRE_AZURE_OPENAI_ENDPOINT, ...). Never put API keys here.
+env: {}
+
+serviceAccount:
+  name: sre-agent
+  # EKS IRSA:   eks.amazonaws.com/role-arn: arn:aws:iam::<acct>:role/sre-agent
+  # AKS WI:     azure.workload.identity/client-id: <managed-identity-client-id>
+  annotations: {}
+
+# AKS workload identity needs this pod label
+podLabels: {}
+
+# Optional: restrict the agent to these namespaces (also narrows RBAC to Roles if you extend it)
+allowedNamespaces: ""
+
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: 500m, memory: 512Mi}
+
+service:
+  type: ClusterIP
+  port: 80

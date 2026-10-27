@@ -1,0 +1,43 @@
+name: ci
+on:
+  push: {branches: [main]}
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t sre-agent:ci .
+
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: {dir: [infra/aws, infra/azure]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: 1.9.8}
+      - run: terraform -chdir=${{ matrix.dir }} fmt -check -recursive
+      - run: terraform -chdir=${{ matrix.dir }} init -backend=false
+      - run: terraform -chdir=${{ matrix.dir }} validate
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/sre-agent --set image.repository=x
